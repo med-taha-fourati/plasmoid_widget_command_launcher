@@ -1,0 +1,2 @@
+module CommandLauncher
+plugin commandlauncherplugin

@@ -1,0 +1,24 @@
+{
+    "KPlugin": {
+        "Id": "org.kde.commandlauncher",
+        "Name": "Command Launcher",
+        "Description": "Quickly execute shell commands from the panel",
+        "Icon": "utilities-terminal",
+        "Version": "1.0",
+        "Category": "Utilities",
+        "Authors": [
+            {
+                "Name": "taha",
+                "Email": "tahafourati11edu@gmail.com"
+            }
+        ],
+        "EnabledByDefault": true,
+        "License": "GPL-2.0+"
+    },
+
+    "KPackageStructure": "Plasma/Applet",
+
+    "X-Plasma-API": "declarativeappletscript",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml"
+}
