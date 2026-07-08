@@ -1,13 +1,14 @@
 #include "commandmodel.h"
-#include <KConfigGroup>
-#include <KSharedConfig>
-#include <KLocalizedString>
+
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QProcess>
+#include <QStandardPaths>
 
 CommandModel::CommandModel(QObject *parent)
     : QAbstractListModel(parent)
-    , m_process(new QProcess(this))
 {
-    loadCommands();
 }
 
 int CommandModel::rowCount(const QModelIndex &parent) const
@@ -21,16 +22,20 @@ QVariant CommandModel::data(const QModelIndex &index, int role) const
 {
     if (!index.isValid() || index.row() >= m_commands.count())
         return QVariant();
-        
+
     const Command &cmd = m_commands.at(index.row());
-    
+
     switch (role) {
     case NameRole:
         return cmd.name;
     case CommandRole:
         return cmd.command;
+    case DescriptionRole:
+        return cmd.description;
     case IconRole:
         return cmd.icon;
+    case SudoRole:
+        return cmd.sudo;
     default:
         return QVariant();
     }
@@ -38,95 +43,68 @@ QVariant CommandModel::data(const QModelIndex &index, int role) const
 
 QHash<int, QByteArray> CommandModel::roleNames() const
 {
-    static QHash<int, QByteArray> roles;
-    if (roles.isEmpty()) {
-        roles[NameRole] = "name";
-        roles[CommandRole] = "command";
-        roles[IconRole] = "icon";
-    }
-    return roles;
+    return {
+        {NameRole, "name"},
+        {CommandRole, "command"},
+        {DescriptionRole, "description"},
+        {IconRole, "icon"},
+        {SudoRole, "sudo"},
+    };
 }
 
 void CommandModel::executeCommand(int index)
 {
     if (index < 0 || index >= m_commands.count())
         return;
-        
-    const QString &command = m_commands.at(index).command;
-    if (command.isEmpty())
+
+    const Command &cmd = m_commands.at(index);
+    if (cmd.command.isEmpty())
         return;
-        
-    m_process->start("sh", {"-c", command});
-}
 
-void CommandModel::configure()
-{
-    // Handled by QML
-}
+    auto *process = new QProcess();
+    connect(process, &QProcess::errorOccurred, process, &QProcess::deleteLater);
+    connect(process, &QProcess::finished, process, &QProcess::deleteLater);
 
-QStringList CommandModel::commands() const
-{
-    QStringList result;
-    for (const auto &cmd : m_commands) {
-        result << QString("%1||%2||%3").arg(cmd.name, cmd.command, cmd.icon);
+    if (cmd.sudo) {
+        const QString pkexec = QStandardPaths::findExecutable("pkexec");
+        if (pkexec.isEmpty()) {
+            delete process;
+            return;
+        }
+        // pkexec pops up the native polkit authentication dialog before running the command.
+        process->start(pkexec, {"sh", "-c", cmd.command});
+    } else {
+        process->start("sh", {"-c", cmd.command});
     }
-    return result;
 }
 
-void CommandModel::setCommands(const QStringList &commands)
+QString CommandModel::commandsJson() const
 {
+    return m_commandsJson;
+}
+
+void CommandModel::setCommandsJson(const QString &json)
+{
+    if (json == m_commandsJson)
+        return;
+
+    m_commandsJson = json;
+
     beginResetModel();
     m_commands.clear();
-    
-    for (const QString &entry : commands) {
-        QStringList parts = entry.split("||");
-        if (parts.size() < 2)
-            continue;
-            
+
+    const QJsonArray array = QJsonDocument::fromJson(json.toUtf8()).array();
+    for (const QJsonValue &value : array) {
+        const QJsonObject obj = value.toObject();
         Command cmd;
-        cmd.name = parts[0];
-        cmd.command = parts[1];
-        cmd.icon = parts.size() > 2 ? parts[2] : "utilities-terminal";
+        cmd.name = obj.value("name").toString();
+        cmd.command = obj.value("command").toString();
+        cmd.description = obj.value("description").toString();
+        cmd.icon = obj.value("icon").toString(QStringLiteral("utilities-terminal"));
+        cmd.sudo = obj.value("sudo").toBool();
         m_commands.append(cmd);
     }
-    
-    endResetModel();
-    saveCommands();
-    emit commandsChanged();
-}
 
-void CommandModel::loadCommands()
-{
-    KConfigGroup cfg = KSharedConfig::openConfig()->group("CommandLauncher");
-    QStringList commandList = cfg.readEntry("Commands", QStringList());
-    
-    beginResetModel();
-    m_commands.clear();
-    
-    for (const QString &entry : commandList) {
-        QStringList parts = entry.split("||");
-        if (parts.size() < 2)
-            continue;
-            
-        Command cmd;
-        cmd.name = parts[0];
-        cmd.command = parts[1];
-        cmd.icon = parts.size() > 2 ? parts[2] : "utilities-terminal";
-        m_commands.append(cmd);
-    }
-    
     endResetModel();
-}
-
-void CommandModel::saveCommands()
-{
-    KConfigGroup cfg = KSharedConfig::openConfig()->group("CommandLauncher");
-    QStringList commandList;
-    
-    for (const auto &cmd : m_commands) {
-        commandList << QString("%1||%2||%3").arg(cmd.name, cmd.command, cmd.icon);
-    }
-    
-    cfg.writeEntry("Commands", commandList);
-    cfg.sync();
+    emit commandsJsonChanged();
 }

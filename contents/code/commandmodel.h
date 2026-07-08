@@ -1,61 +1,51 @@
 #pragma once
 
 #include <QAbstractListModel>
-#include <QProcess>
-#include <QStringList>
+#include <QString>
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
-#include <QtQml>
 
 struct Command {
     QString name;
     QString command;
+    QString description;
     QString icon;
+    bool sudo = false;
 };
 
 class CommandModel : public QAbstractListModel
 {
     Q_OBJECT
     QML_ELEMENT
-    
-    Q_PROPERTY(QStringList commands READ commands WRITE setCommands NOTIFY commandsChanged)
-    
+
+    // JSON-encoded array of command objects, bound to Plasmoid.configuration.commands.
+    Q_PROPERTY(QString commandsJson READ commandsJson WRITE setCommandsJson NOTIFY commandsJsonChanged)
+
 public:
     explicit CommandModel(QObject *parent = nullptr);
     ~CommandModel() override = default;
-    
+
     enum Roles {
         NameRole = Qt::UserRole + 1,
         CommandRole,
-        IconRole
+        DescriptionRole,
+        IconRole,
+        SudoRole
     };
-    
+
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
-    
+
     Q_INVOKABLE void executeCommand(int index);
-    Q_INVOKABLE void configure();
-    
-    QStringList commands() const;
-    void setCommands(const QStringList &commands);
-    
+
+    QString commandsJson() const;
+    void setCommandsJson(const QString &json);
+
 Q_SIGNALS:
-    void commandsChanged();
-    
+    void commandsJsonChanged();
+
 private:
-    void loadCommands();
-    void saveCommands();
-    
     QVector<Command> m_commands;
-    QProcess *m_process;
+    QString m_commandsJson;
 };
-
-// static void registerCommandLauncherTypes()
-// {
-//     qmlRegisterType<CommandModel>("org.kde.commandlauncher", 1, 0, "CommandModel");
-// }
-
-// Q_COREAPP_STARTUP_FUNCTION(registerCommandLauncherTypes);
-
-//Q_DECLARE_METATYPE(CommandModel*)
